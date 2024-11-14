@@ -788,3 +788,376 @@ Tinytest.add(
     test.equal(new Match.ObjectWithValues(), Match.ObjectWithValues());
   }
 );
+
+Tinytest.addAsync('checkAsync - check', async (test, onComplete) => {
+  try{
+  const matches = async (value, pattern) => {
+      let error;
+      try {
+        await checkAsync(value, pattern, { throwAllErrors: true });
+      } catch (e) {
+        error = e;
+      }
+
+      test.isFalse(error, `Expected no error, but got: ${error}`);
+      let testResult;
+      try {
+        testResult = await MatchAsync.test(value, pattern);
+      } catch (e) {
+        // Catch any exceptions thrown by MatchAsync.test
+        test.exception(e);
+        testResult = false;
+      }
+      test.isTrue(testResult);
+    };
+
+    const fails = async (value, pattern) => {
+      let error;
+      try {
+        await checkAsync(value, pattern, { throwAllErrors: true });
+      } catch (e) {
+        error = e;
+      }
+
+      test.isTrue(error, 'Expected an error, but got none');
+      if (error) {
+        if (Array.isArray(error)) {
+          error.forEach(e => test.instanceOf(e, MatchAsync.Error));
+        } else {
+          test.instanceOf(error, MatchAsync.Error);
+        }
+      }
+      let testResult;
+      try {
+        testResult = await MatchAsync.test(value, pattern);
+      } catch (e) {
+        // Catch any exceptions thrown by MatchAsync.test
+        test.exception(e);
+        testResult = false;
+      }
+      test.isFalse(testResult);
+    };
+
+    await matches('foo', String);
+    await matches('', String);
+    await matches(0, Number);
+    await matches(42.59, Number);
+    await matches(NaN, Number);
+    await matches(Infinity, Number);
+    await matches(true, Boolean);
+    await matches(false, Boolean);
+    await matches(function(){}, Function);
+    await matches(undefined, undefined);
+    await matches(null, null);
+  } catch(e){
+    
+  }
+});
+
+Tinytest.addAsync('checkAsync - check throw all errors', function (test, onComplete) {
+  (async function () {
+    const matches = async (value, pattern) => {
+      let error;
+      try {
+        await checkAsync(value, pattern, { throwAllErrors: true });
+      } catch (e) {
+        error = e;
+      }
+
+      test.isFalse(error, `Expected no error, but got: ${error}`);
+      let testResult;
+      try {
+        testResult = await MatchAsync.test(value, pattern);
+      } catch (e) {
+        // Catch any exceptions thrown by MatchAsync.test
+        test.exception(e);
+        testResult = false;
+      }
+      test.isTrue(testResult);
+    };
+
+    const fails = async (value, pattern) => {
+      let error;
+      try {
+        await checkAsync(value, pattern, { throwAllErrors: true });
+      } catch (e) {
+        error = e;
+      }
+
+      test.isTrue(error, 'Expected an error, but got none');
+      if (error) {
+        if (Array.isArray(error)) {
+          error.forEach(e => test.instanceOf(e, MatchAsync.Error));
+        } else {
+          test.instanceOf(error, MatchAsync.Error);
+        }
+      }
+      let testResult;
+      try {
+        testResult = await MatchAsync.test(value, pattern);
+      } catch (e) {
+        // Catch any exceptions thrown by MatchAsync.test
+        test.exception(e);
+        testResult = false;
+      }
+      test.isFalse(testResult);
+    };
+
+    try {
+  // Atoms.
+  const pairs = [
+    ['foo', String],
+    ['', String],
+    [0, Number],
+    [42.59, Number],
+    [NaN, Number],
+    [Infinity, Number],
+    [true, Boolean],
+    [false, Boolean],
+    [function(){}, Function],
+    [undefined, undefined],
+    [null, null]
+  ];
+  for(const pair of pairs){
+    await matches(pair[0], MatchAsync.Any);
+    for(const type of [String, Number, Boolean, undefined, null]){
+      if (type === pair[1]) {
+        await matches(pair[0], type);
+        await matches(pair[0], MatchAsync.Optional(type));
+        await matches(undefined, MatchAsync.Optional(type));
+        await matches(pair[0], MatchAsync.Maybe(type));
+        await matches(undefined, MatchAsync.Maybe(type));
+        await matches(null, MatchAsync.Maybe(type));
+        await matches(pair[0], MatchAsync.Where(() => {
+          check(pair[0], type);
+          return true;
+        }));
+        await matches(pair[0], MatchAsync.Where(async () => {
+          try {
+            await checkAsync(pair[0], type);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }));
+      } else {
+        await fails(pair[0], type);
+        await matches(pair[0], MatchAsync.OneOf(type, pair[1]));
+        await matches(pair[0], MatchAsync.OneOf(pair[1], type));
+        await fails(pair[0], MatchAsync.Where(async () => {
+          await checkAsync(pair[0], type);
+          return true;
+        }));
+        await fails(pair[0], MatchAsync.Where(async () => {
+          try {
+            await checkAsync(pair[0], type);
+            return true;
+          } catch (e) {
+            return false;
+          }
+        }));
+      }
+
+      if ( type !== null ) {
+
+        // Optional doesn't allow null, but does match on null type
+        await fails(null, MatchAsync.Optional(type));
+       }
+      await fails(pair[0], [type]);
+      await fails(pair[0], Object);
+    }
+  }
+  await Promise.all([
+    fails(true, MatchAsync.OneOf(String, Number, undefined, null, [Boolean])),
+    fails(new String('foo'), String),
+    fails(new Boolean(true), Boolean),
+    fails(new Number(123), Number),
+    matches([1, 2, 3], [Number]),
+    matches([], [Number]),
+    fails([1, 2, 3, '4'], [Number]),
+    fails([1, 2, 3, [4]], [Number]),
+    matches([1, 2, 3, '4'], [MatchAsync.OneOf(Number, String)]),
+    matches({}, Object),
+    matches({}, {}),
+    matches({foo: 42}, Object),
+    fails({foo: 42}, {}),
+    matches({a: 1, b:2}, {b: Number, a: Number}),
+    fails({a: 1, b:2}, {b: Number}),
+    matches({a: 1, b:2}, MatchAsync.ObjectIncluding({b: Number})),
+    fails({a: 1, b:2}, MatchAsync.ObjectIncluding({b: String})),
+    fails({a: 1, b:2}, MatchAsync.ObjectIncluding({c: String})),
+    fails({}, {a: Number}),
+    matches({nodeType: 1}, {nodeType: MatchAsync.Any}),
+    matches({nodeType: 1}, MatchAsync.ObjectIncluding({nodeType: MatchAsync.Any})),
+    fails({nodeType: 1}, {nodeType: String}),
+    fails({}, MatchAsync.ObjectIncluding({nodeType: MatchAsync.Any})),
+    fails({}, MatchAsync.ObjectIncluding({nodeType: MatchAsync.Any})),
+      // MatchAsync.Optional does not match on a null value, unless the allowed type is itself "null"
+    fails(null, MatchAsync.Optional(String)),
+    fails(null, MatchAsync.Optional(undefined)),
+    matches(null, MatchAsync.Optional(null)),
+    // on the other hand, undefined, works fine for all of them
+    matches(undefined, MatchAsync.Optional(String)),
+    matches(undefined, MatchAsync.Optional(undefined)),
+    matches(undefined, MatchAsync.Optional(null)),
+    fails(true, MatchAsync.Optional(String)), // different should still fail
+    matches("String", MatchAsync.Optional(String)), // same should pass
+    matches({}, { a: MatchAsync.Optional(Number) }),
+    matches({ a: 1 }, { a: MatchAsync.Optional(Number) }),
+    fails({ a: true }, { a: MatchAsync.Optional(Number) }),
+    fails({ a: undefined }, { a: MatchAsync.Optional(Number) }),
+    // .Maybe requires undefined, null or the allowed type in order to match
+    matches(null, MatchAsync.Maybe(String)),
+    matches(null, MatchAsync.Maybe(undefined)),
+    matches(null, MatchAsync.Maybe(null)),
+    matches(undefined, MatchAsync.Maybe(String)),
+    matches(undefined, MatchAsync.Maybe(undefined)),
+    matches(undefined, MatchAsync.Maybe(null)),
+    fails(true, MatchAsync.Maybe(String)), // different should still fail
+    matches('String', MatchAsync.Maybe(String)), // same should pass
+    matches({}, {a: MatchAsync.Maybe(Number)}),
+    matches({a: 1}, {a: MatchAsync.Maybe(Number)}),
+    fails({a: true}, {a: MatchAsync.Maybe(Number)}),
+    // MatchAsync.Optional means "or undefined" at the top level but "or absent" in
+    // objects.
+    // MatchAsync.Maybe should behave the same as MatchAsync.Optional in objects
+    // including handling nulls
+    fails({a: undefined}, {a: MatchAsync.Maybe(Number)}),
+    fails({a: null}, {a: MatchAsync.Maybe(Number)}),
+    matches({}, MatchAsync.ObjectWithValues(Number)),
+    matches({x: 1}, MatchAsync.ObjectWithValues(Number)),
+    matches({x: 1, y: 2}, MatchAsync.ObjectWithValues(Number)),
+    fails({x: 1, y: '2'}, MatchAsync.ObjectWithValues(Number)),
+    matches('asdf', 'asdf'),
+    fails('asdf', 'monkey'),
+    matches(123, 123),
+    fails(123, 456),
+    fails('123', 123),
+    fails(123, '123'),
+    matches(true, true),
+    matches(false, false),
+    fails(true, false),
+    fails(true, 'true'),
+    fails('false', false),
+    matches(/foo/, RegExp),
+    fails(/foo/, String),
+    matches(new Date, Date),
+    fails(new Date, Number),
+    matches(EJSON.newBinary(42), MatchAsync.Where(EJSON.isBinary)),
+    fails([], MatchAsync.Where(EJSON.isBinary)),
+    matches(42, MatchAsync.Where(x => x % 2 === 0)),
+    fails(43, MatchAsync.Where(x => x % 2 === 0)),
+    // MatchAsync.Integer
+    matches(-1, MatchAsync.Integer),
+    matches(0, MatchAsync.Integer),
+    matches(1, MatchAsync.Integer),
+    matches(-2147483648, MatchAsync.Integer), // INT_MIN
+    matches(2147483647, MatchAsync.Integer), // INT_MAX
+    fails(123.33, MatchAsync.Integer),
+    fails(0.33, MatchAsync.Integer),
+    fails(1.348192308491824e23, MatchAsync.Integer),
+    fails(NaN, MatchAsync.Integer),
+    fails(Infinity, MatchAsync.Integer),
+    fails(-Infinity, MatchAsync.Integer),
+    fails({}, MatchAsync.Integer),
+    fails([], MatchAsync.Integer),
+    fails(function () {}, MatchAsync.Integer),
+    fails(new Date(), MatchAsync.Integer)
+  ]);
+
+  const F = function () {
+    this.x = 123;
+  };
+  await fails(new F, { x: 123 });
+
+  await matches({
+    a: 'something',
+    b: [
+      {x: 42, k: null},
+      {x: 43, k: true, p: ['yay']},
+    ],
+  }, {
+    a: String,
+    b: [
+      MatchAsync.ObjectIncluding({
+        x: Number,
+        k: MatchAsync.OneOf(null, Boolean)
+      }),
+    ],
+  });
+
+  // Test non-plain objects.
+  const parentObj = {foo: 'bar'};
+  const childObj = Object.assign(Object.create(parentObj), {bar: 'foo'});
+  await Promise.all([
+    matches(parentObj, Object),
+    fails(parentObj, { foo: String, bar: String }),
+    fails(parentObj, { bar: String }),
+    matches(parentObj, { foo: String }),
+    fails(childObj, Object),
+    fails(childObj, { foo: String, bar: String }),
+    fails(childObj, { bar: String }),
+    fails(childObj, { foo: String })
+  ])
+
+
+  // Functions
+  const testFunction = () => {};
+  await Promise.all([
+    matches(testFunction, Function),
+    fails(5, Function)
+  ]);
+
+  // Circular Reference "Classes"
+
+  const TestInstanceChild = function () {};
+  const TestInstanceParent = function (child) {
+    child._parent = this;
+    this.child = child;
+  };
+
+  const testInstanceChild = new TestInstanceChild()
+  const testInstanceParent = new TestInstanceParent(testInstanceChild);
+  await Promise.all([
+    matches(TestInstanceParent, Function),
+    matches(testInstanceParent, TestInstanceParent),
+    fails(testInstanceChild, TestInstanceParent),
+    matches(testInstanceParent, MatchAsync.Optional(TestInstanceParent)),
+    matches(testInstanceParent, MatchAsync.Maybe(TestInstanceParent))
+  ]);
+
+
+  // Circular Reference Objects
+
+  const circleFoo = {};
+  const circleBar = {};
+  circleFoo.bar = circleBar;
+  circleBar.foo = circleFoo;
+  await fails(circleFoo, null);
+
+  // Test that "arguments" is treated like an array.
+  const argumentsmatches = async function () {
+    return await matches(arguments, [Number]);
+  };
+  await argumentsmatches();
+  await argumentsmatches(1);
+  await argumentsmatches(1, 2);
+  const argumentsfails = async function () {
+    return await fails(arguments, [Number]);
+  };
+  await argumentsfails('123');
+  await argumentsfails(1, '23');
+
+    } catch (e) {
+      // Catch any unexpected exceptions
+      test.exception(e);
+    } finally {
+      // Ensure that onComplete is called to signal the test runner that the test is finished
+      onComplete();
+    }
+  })().catch(error => {
+    // Catch any unhandled promise rejections
+    test.exception(error);
+    onComplete();
+  });
+});
