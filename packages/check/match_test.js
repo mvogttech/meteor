@@ -838,17 +838,67 @@ Tinytest.addAsync('checkAsync - check', async (test, onComplete) => {
       test.isFalse(testResult);
     };
 
-    await matches('foo', String);
-    await matches('', String);
-    await matches(0, Number);
-    await matches(42.59, Number);
-    await matches(NaN, Number);
-    await matches(Infinity, Number);
-    await matches(true, Boolean);
-    await matches(false, Boolean);
-    await matches(function(){}, Function);
-    await matches(undefined, undefined);
-    await matches(null, null);
+    await Promise.all([
+      fails(true, Match.OneOf(String, Number, undefined, null, [Boolean])),
+      fails(new String('foo'), String),
+      fails(new Boolean(true), Boolean),
+      fails(new Number(123), Number),
+
+      matches([1, 2, 3], [Number]),
+      matches([], [Number]),
+      fails([1, 2, 3, '4'], [Number]),
+      fails([1, 2, 3, [4]], [Number]),
+      matches([1, 2, 3, '4'], [Match.OneOf(Number, String)]),
+
+      matches({}, Object),
+      matches({}, {}),
+      matches({foo: 42}, Object),
+      fails({foo: 42}, {}),
+      matches({a: 1, b:2}, {b: Number, a: Number}),
+      fails({a: 1, b:2}, {b: Number}),
+      matches({a: 1, b:2}, Match.ObjectIncluding({b: Number})),
+      fails({a: 1, b:2}, Match.ObjectIncluding({b: String})),
+      fails({a: 1, b:2}, Match.ObjectIncluding({c: String})),
+      fails({}, {a: Number}),
+      matches({nodeType: 1}, {nodeType: Match.Any}),
+      matches({nodeType: 1}, Match.ObjectIncluding({nodeType: Match.Any})),
+      fails({nodeType: 1}, {nodeType: String}),
+      fails({}, Match.ObjectIncluding({nodeType: Match.Any})),
+
+      // Match.Optional does not match on a null value, unless the allowed type is itself "null"
+      fails(null, Match.Optional(String)),
+      fails(null, Match.Optional(undefined)),
+      matches(null, Match.Optional(null)),
+
+      // on the other hand, undefined, works fine for all of them
+      matches(undefined, Match.Optional(String)),
+      matches(undefined, Match.Optional(undefined)),
+      matches(undefined, Match.Optional(null)),
+
+      fails(true, Match.Optional(String)), // different should still fail
+      matches('String', Match.Optional(String)), // same should pass
+
+      matches({}, {a: Match.Optional(Number)}),
+      matches({a: 1}, {a: Match.Optional(Number)}),
+      fails({a: true}, {a: Match.Optional(Number)}),
+      fails({a: undefined}, {a: Match.Optional(Number)}),
+
+      // .Maybe requires undefined, null or the allowed type in order to match
+      matches(null, Match.Maybe(String)),
+      matches(null, Match.Maybe(undefined)),
+      matches(null, Match.Maybe(null)),
+
+      matches(undefined, Match.Maybe(String)),
+      matches(undefined, Match.Maybe(undefined)),
+      matches(undefined, Match.Maybe(null)),
+
+      fails(true, Match.Maybe(String)), // different should still fail
+      matches('String', Match.Maybe(String)), // same should pass
+
+      matches({}, {a: Match.Maybe(Number)}),
+      matches({a: 1}, {a: Match.Maybe(Number)}),
+      fails({a: true}, {a: Match.Maybe(Number)}),
+    ])
   } catch(e){
     
   }
@@ -904,8 +954,8 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
     };
 
     try {
-  // Atoms.
-  const pairs = [
+  // Atomsics
+  for(const pair of [
     ['foo', String],
     ['', String],
     [0, Number],
@@ -917,8 +967,7 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
     [function(){}, Function],
     [undefined, undefined],
     [null, null]
-  ];
-  for(const pair of pairs){
+  ]){
     await matches(pair[0], MatchAsync.Any);
     for(const type of [String, Number, Boolean, undefined, null]){
       if (type === pair[1]) {
@@ -967,6 +1016,42 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
       await fails(pair[0], Object);
     }
   }
+
+  const F = function () {
+    this.x = 123;
+  };
+
+  // Test non-plain objects.
+  const parentObj = {foo: 'bar'};
+  const childObj = Object.assign(Object.create(parentObj), {bar: 'foo'});
+
+  // Functions
+  const testFunction = () => {};
+
+  // Circular Reference "Classes"
+  const TestInstanceChild = function () {};
+  const TestInstanceParent = function (child) {
+    child._parent = this;
+    this.child = child;
+  };
+  const testInstanceChild = new TestInstanceChild()
+  const testInstanceParent = new TestInstanceParent(testInstanceChild);
+
+  // Circular Reference Objects
+  const circleFoo = {};
+  const circleBar = {};
+  circleFoo.bar = circleBar;
+  circleBar.foo = circleFoo;
+
+  // Test that "arguments" is treated like an array.
+  const argumentsmatches = async function () {
+    return await matches(arguments, [Number]);
+  };
+
+  const argumentsfails = async function () {
+    return await fails(arguments, [Number]);
+  };
+
   await Promise.all([
     fails(true, MatchAsync.OneOf(String, Number, undefined, null, [Boolean])),
     fails(new String('foo'), String),
@@ -992,7 +1077,7 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
     fails({nodeType: 1}, {nodeType: String}),
     fails({}, MatchAsync.ObjectIncluding({nodeType: MatchAsync.Any})),
     fails({}, MatchAsync.ObjectIncluding({nodeType: MatchAsync.Any})),
-      // MatchAsync.Optional does not match on a null value, unless the allowed type is itself "null"
+    // MatchAsync.Optional does not match on a null value, unless the allowed type is itself "null"
     fails(null, MatchAsync.Optional(String)),
     fails(null, MatchAsync.Optional(undefined)),
     matches(null, MatchAsync.Optional(null)),
@@ -1062,34 +1147,24 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
     fails({}, MatchAsync.Integer),
     fails([], MatchAsync.Integer),
     fails(function () {}, MatchAsync.Integer),
-    fails(new Date(), MatchAsync.Integer)
-  ]);
-
-  const F = function () {
-    this.x = 123;
-  };
-  await fails(new F, { x: 123 });
-
-  await matches({
-    a: 'something',
-    b: [
-      {x: 42, k: null},
-      {x: 43, k: true, p: ['yay']},
-    ],
-  }, {
-    a: String,
-    b: [
-      MatchAsync.ObjectIncluding({
-        x: Number,
-        k: MatchAsync.OneOf(null, Boolean)
-      }),
-    ],
-  });
-
-  // Test non-plain objects.
-  const parentObj = {foo: 'bar'};
-  const childObj = Object.assign(Object.create(parentObj), {bar: 'foo'});
-  await Promise.all([
+    fails(new Date(), MatchAsync.Integer),
+    // Test non-plain objects.
+    fails(new F, { x: 123 }),
+    matches({
+      a: 'something',
+      b: [
+        {x: 42, k: null},
+        {x: 43, k: true, p: ['yay']},
+      ],
+    }, {
+      a: String,
+      b: [
+        MatchAsync.ObjectIncluding({
+          x: Number,
+          k: MatchAsync.OneOf(null, Boolean)
+        }),
+      ],
+    }),
     matches(parentObj, Object),
     fails(parentObj, { foo: String, bar: String }),
     fails(parentObj, { bar: String }),
@@ -1097,56 +1172,21 @@ Tinytest.addAsync('checkAsync - check throw all errors', function (test, onCompl
     fails(childObj, Object),
     fails(childObj, { foo: String, bar: String }),
     fails(childObj, { bar: String }),
-    fails(childObj, { foo: String })
-  ])
-
-
-  // Functions
-  const testFunction = () => {};
-  await Promise.all([
+    fails(childObj, { foo: String }),
     matches(testFunction, Function),
-    fails(5, Function)
-  ]);
-
-  // Circular Reference "Classes"
-
-  const TestInstanceChild = function () {};
-  const TestInstanceParent = function (child) {
-    child._parent = this;
-    this.child = child;
-  };
-
-  const testInstanceChild = new TestInstanceChild()
-  const testInstanceParent = new TestInstanceParent(testInstanceChild);
-  await Promise.all([
+    fails(5, Function),
     matches(TestInstanceParent, Function),
     matches(testInstanceParent, TestInstanceParent),
     fails(testInstanceChild, TestInstanceParent),
     matches(testInstanceParent, MatchAsync.Optional(TestInstanceParent)),
-    matches(testInstanceParent, MatchAsync.Maybe(TestInstanceParent))
+    matches(testInstanceParent, MatchAsync.Maybe(TestInstanceParent)),
+    fails(circleFoo, null),
+    argumentsmatches(),
+    argumentsmatches(1),
+    argumentsmatches(1, 2),
+    argumentsfails('123'),
+    argumentsfails(1, '23')
   ]);
-
-
-  // Circular Reference Objects
-
-  const circleFoo = {};
-  const circleBar = {};
-  circleFoo.bar = circleBar;
-  circleBar.foo = circleFoo;
-  await fails(circleFoo, null);
-
-  // Test that "arguments" is treated like an array.
-  const argumentsmatches = async function () {
-    return await matches(arguments, [Number]);
-  };
-  await argumentsmatches();
-  await argumentsmatches(1);
-  await argumentsmatches(1, 2);
-  const argumentsfails = async function () {
-    return await fails(arguments, [Number]);
-  };
-  await argumentsfails('123');
-  await argumentsfails(1, '23');
 
     } catch (e) {
       // Catch any unexpected exceptions

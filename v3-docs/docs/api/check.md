@@ -47,6 +47,34 @@ this error gets sent over the wire to the client, it will appear only as
 `Meteor.Error(400, 'Match Failed')`. The failure details will be written to the
 server logs but not revealed to the client.
 
+<ApiBox name="checkAsync" hasCustomExample/>
+
+Same as [`check`](#check), but returns a promise and is available on the server.
+
+```js [server.js]
+import { checkAsync } from "meteor/check";
+import { Meteor } from "meteor/meteor";
+Meteor.publish("chatsInRoom", async function (roomId) {
+  // Make sure `roomId` is a string, not an arbitrary Mongo selector object.
+  await checkAsync(roomId, String);
+  return Chats.find({ room: roomId });
+});
+
+Meteor.methods({
+  addChat: async function(roomId, message) {
+    await checkAsync(roomId, String);
+    await checkAsync(message, {
+      text: String,
+      timestamp: Date,
+      // Optional, but if present must be an array of strings.
+      tags: Match.Maybe([String]),
+    });
+
+    // Do something with the message...
+  },
+});
+```
+
 <ApiBox name="Match.test" hasCustomExample/>
 
 `Match.test` can be used to identify if a variable has a certain structure.
@@ -66,6 +94,23 @@ Match.test(value, Match.OneOf(String, [Number]));
 
 This can be useful if you have a function that accepts several different kinds
 of objects, and you want to determine which was passed in.
+
+<ApiBox name="MatchAsync.test" hasCustomExample/>
+
+Same as [`Match.test`](#Match.test), but returns a promise and is available on the server.
+
+```js
+import { MatchAsync } from "meteor/check";
+
+// Will return true for `{ foo: 1, bar: 'hello' }` or similar.
+await MatchAsync.test(value, { foo: Match.Integer, bar: String });
+
+// Will return true if `value` is a string.
+await MatchAsync.test(value, String);
+
+// Will return true if `value` is a string or an array of numbers.
+await MatchAsync.test(value, Match.OneOf(String, [Number]));
+```
 
 ## Match Patterns { #matchpatterns }
 
