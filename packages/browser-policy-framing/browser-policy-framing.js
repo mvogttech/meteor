@@ -1,42 +1,81 @@
-// By adding this package, you get a default policy where only web pages on the
-// same origin as your app can frame your app.
-//
-// For controlling which origins can frame this app,
-// BrowserPolicy.framing.disallow()
-// BrowserPolicy.framing.restrictToOrigin(origin)
-// BrowserPolicy.framing.allowByAnyOrigin()
+/**
+ * @description By adding this package, you get a default policy where only web pages on the same origin as your app can frame your app.
+ * @fileoverview Provides methods to control which origins can frame this app.
+ * @namespace BrowserPolicy
+ * @example
+ * // Disallow any framing of the app.
+ * BrowserPolicy.framing.disallow();
+ * @example
+ * // Restrict framing to a specific origin.
+ * BrowserPolicy.framing.restrictToOrigin('http://example.com');
+ * @example
+ * // Allow the app to be framed by any origin.
+ * BrowserPolicy.framing.allowAll();
+ */
 
-var defaultXFrameOptions = "SAMEORIGIN";
-var xFrameOptions = defaultXFrameOptions;
+const defaultXFrameOptions = 'SAMEORIGIN';
+let xFrameOptions = defaultXFrameOptions;
 
-var BrowserPolicy = require("meteor/browser-policy-common").BrowserPolicy;
-BrowserPolicy.framing = {};
+const { BrowserPolicy } = require('meteor/browser-policy-common');
 
-Object.assign(BrowserPolicy.framing, {
-  // Exported for tests and browser-policy-common.
-  _constructXFrameOptions: function () {
+/**
+ * Provides methods to control which origins can frame this app.
+ * @namespace BrowserPolicy.framing
+ */
+BrowserPolicy.framing = {
+  /**
+   * Constructs the `X-Frame-Options` header value.
+   * Exported for tests and browser-policy-common.
+   * @returns {string|null} The current `X-Frame-Options` value.
+   * @private
+   */
+  _constructXFrameOptions() {
     return xFrameOptions;
   },
-  _reset: function () {
+
+  /**
+   * Resets the `X-Frame-Options` to the default value.
+   * @private
+   */
+  _reset() {
     xFrameOptions = defaultXFrameOptions;
   },
 
-  disallow: function () {
-    xFrameOptions = "DENY";
+  /**
+   * Disallows any framing of the app.
+   *
+   * Sets the `X-Frame-Options` header to `'DENY'`.
+   */
+  disallow() {
+    xFrameOptions = 'DENY';
   },
-  // ALLOW-FROM not supported in Chrome or Safari.
-  restrictToOrigin: function (origin) {
-    // Trying to specify two allow-from throws to prevent users from
-    // accidentally overwriting an allow-from origin when they think they are
-    // adding multiple origins.
-    if (xFrameOptions && xFrameOptions.indexOf("ALLOW-FROM") === 0)
-      throw new Error("You can only specify one origin that is allowed to" +
-                      " frame this app.");
-    xFrameOptions = "ALLOW-FROM " + origin;
+
+  /**
+   * Restricts framing to a specific origin.
+   *
+   * **Note:** `ALLOW-FROM` is not supported in Chrome or Safari.
+   *
+   * @param {string} origin - The origin that is allowed to frame the app.
+   * @throws {Error} If multiple origins are specified.
+   */
+  restrictToOrigin(origin) {
+    // Prevent specifying multiple ALLOW-FROM origins.
+    if (xFrameOptions && xFrameOptions.startsWith('ALLOW-FROM')) {
+      throw new Error(
+        'You can only specify one origin that is allowed to frame this app.'
+      );
+    }
+    xFrameOptions = `ALLOW-FROM ${origin}`;
   },
-  allowAll: function () {
+
+  /**
+   * Allows the app to be framed by any origin.
+   *
+   * Sets the `X-Frame-Options` header to `null`.
+   */
+  allowAll() {
     xFrameOptions = null;
-  }
-});
+  },
+};
 
 exports.BrowserPolicy = BrowserPolicy;
