@@ -14,7 +14,6 @@ Package.onUse(api => {
   api.export('check');
   api.export('Match');
   api.export('checkAsync');
-  api.export('MatchAsync');
 });
 
 Package.onTest(api => {

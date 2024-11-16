@@ -95,21 +95,21 @@ Match.test(value, Match.OneOf(String, [Number]));
 This can be useful if you have a function that accepts several different kinds
 of objects, and you want to determine which was passed in.
 
-<ApiBox name="MatchAsync.test" hasCustomExample/>
+<ApiBox name="Match.testAsync" hasCustomExample/>
 
 Same as [`Match.test`](#Match.test), but returns a promise and is available on the server.
 
 ```js
-import { MatchAsync } from "meteor/check";
+import { Match } from "meteor/check";
 
 // Will return true for `{ foo: 1, bar: 'hello' }` or similar.
-await MatchAsync.test(value, { foo: Match.Integer, bar: String });
+await Match.testAsync(value, { foo: Match.Integer, bar: String });
 
 // Will return true if `value` is a string.
-await MatchAsync.test(value, String);
+await Match.testAsync(value, String);
 
 // Will return true if `value` is a string or an array of numbers.
-await MatchAsync.test(value, Match.OneOf(String, [Number]));
+await Match.testAsync(value, Match.OneOf(String, [Number]));
 ```
 
 ## Match Patterns { #matchpatterns }

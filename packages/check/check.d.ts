@@ -75,6 +75,16 @@ export namespace Match {
     value: any,
     pattern: T
   ): value is PatternMatch<T>;
+
+  /**
+   * Returns a Promise that resolves if the value matches the pattern.
+   * @param value The value to check
+   * @param pattern The pattern to match `value` against
+   */
+  async function testAsync<T extends Pattern>(
+    value: any,
+    pattern: T
+  ): Promise<void>;
 }
 
 /**
@@ -94,3 +104,25 @@ export declare function check<T extends Match.Pattern>(
   pattern: T,
   options?: { throwAllErrors?: boolean }
 ): asserts value is Match.PatternMatch<T>;
+
+
+/**
+ * Check that a value matches a pattern.
+ * If the value does not match the pattern, throw a `Match.Error`.
+ * By default, it will throw immediately at the first error encountered. Pass in { throwAllErrors: true } to throw all errors.
+ * Particularly useful to assert that arguments to a function have the right
+ * types and structure.
+ * @param value The value to check
+ * @param pattern The pattern to match `value` against
+ * @param {Object} [options={}] Additional options for check
+ * @param {Boolean} [options.throwAllErrors=false] If true, throw all errors
+ * @returns A Promise that resolves if the value matches the pattern
+ * @throws {Match.Error} If the value does not match the pattern
+ * @throws {Error} If the value does not match the pattern and the pattern throws an error
+ */
+export declare function checkAsync<T extends Match.Pattern>(
+  value: any,
+  pattern: T,
+  options?: { throwAllErrors?: boolean }
+): Promise<void>;
+

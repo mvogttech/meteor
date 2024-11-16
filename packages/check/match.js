@@ -1,9 +1,45 @@
-import { isPlainObject } from './isPlainObject';
+/**
+ * @fileoverview
+ * @module check
+ * @summary Check whether a value matches a pattern.
+ * @version 1.5.0
+ * @namespace check
+ * @example
+ * import { check } from 'meteor/check';
+ * @example
+ * import { Match } from 'meteor/check';
+ * @example
+ * import { check, Match } from 'meteor/check';
+ * @example
+ * import { checkAsync, Match } from 'meteor/check';
+ */
+
+/**
+ * @function isPlainObject
+ * @param {*} obj 
+ * @returns {boolean}
+ * @summary Returns true if the value is a plain object.
+ */
+function isPlainObject(obj) {
+  if (typeof obj !== 'object' || obj === null) {
+    return false;
+  }
+
+  let proto = Object.getPrototypeOf(obj);
+
+  // Objects with no prototype (`Object.create(null)`) are plain objects
+  if (proto === null) {
+    return true;
+  }
+
+  // Objects with prototype are plain if their prototype is Object.prototype
+  return proto === Object.prototype;
+}
 
 /**
  * An environment variable to track the current argument checker.
  */
-const currentArgumentChecker = new Meteor.EnvironmentVariable();
+const fiberLocalStorage = new Meteor.EnvironmentVariable();
 
 /**
  * Alias for Object.prototype.hasOwnProperty.
@@ -17,19 +53,7 @@ const hasOwn = Object.prototype.hasOwnProperty;
  * @param {Object} result - The result object containing message and path.
  * @returns {Match.Error} The formatted Match.Error.
  */
-const format = result => new MatchBase.Error(result.message, result.path);
-
-/**
- * Asynchronously formats the result into a Match.Error.
- *
- * @param {Object} result - The result object containing message and path.
- * @returns {Promise<Match.Error>} A promise that resolves to the formatted Match.Error.
- * @async
- */
-const formatAsync = result => new Promise((resolve, reject) => {
-    resolve(new MatchBase.Error(result.message, result.path));
-});
-
+const format = result => new Match.Error(result.message, result.path);
 
 /**
  * @summary Check that a value matches a [pattern](#matchpatterns).
@@ -46,7 +70,7 @@ const formatAsync = result => new Promise((resolve, reject) => {
  */
 export function check(value, pattern, options = { throwAllErrors: false }) {
   // Record that check got called, if somebody cared.
-  const argChecker = currentArgumentChecker.getOrNullIfOutsideFiber();
+  const argChecker = fiberLocalStorage.getOrNullIfOutsideFiber();
   if (argChecker) {
     argChecker.checking(value);
   }
@@ -55,7 +79,12 @@ export function check(value, pattern, options = { throwAllErrors: false }) {
 
   if (result) {
     if (options.throwAllErrors) {
-      const errors = Array.isArray(result) ? result.map(format) : [format(result)];
+      let errors;
+      if(Array.isArray(result)) {
+            errors = result.map(format)
+        } else {
+            errors = [format(result)];
+        }
       throw errors;
     } else {
       throw format(result);
@@ -81,7 +110,7 @@ export function check(value, pattern, options = { throwAllErrors: false }) {
  */
 export async function checkAsync(value, pattern, options = { throwAllErrors: false }) {
   // Record that check got called, if somebody cared.
-  const argChecker = currentArgumentChecker.getOrNullIfOutsideFiber();
+  const argChecker = fiberLocalStorage.getOrNullIfOutsideFiber();
   if (argChecker) {
     argChecker.checking(value);
   }
@@ -92,22 +121,22 @@ export async function checkAsync(value, pattern, options = { throwAllErrors: fal
     if (options.throwAllErrors) {
       let errors;
       if(Array.isArray(result)) {
-            errors = await Promise.all(result.map(formatAsync));
+            errors = result.map(format)
         } else {
-            errors = await formatAsync(result);
+            errors = [format(result)];
         }
       throw errors;
     } else {
-      throw await formatAsync(result);
+      throw format(result);
     }
   }
 }
 
 /**
- * @namespace MatchBase
- * @summary The namespace for all Match types and methods shared by Match and MatchAsync.
+ * @namespace Match
+ * @summary The namespace for all Match patterns.
  */
-const MatchBase = {
+export const Match = {
   /**
    * Matches an optional value, i.e., value or undefined.
    * @param {*} pattern - The pattern to match.
@@ -116,7 +145,6 @@ const MatchBase = {
   Optional: function(pattern) {
     return new Optional(pattern);
   },
-
   /**
    * Matches a nullable value, i.e., value, null, or undefined.
    * @param {*} pattern - The pattern to match.
@@ -125,7 +153,6 @@ const MatchBase = {
   Maybe: function(pattern) {
     return new Maybe(pattern);
   },
-
   /**
    * Matches any one of the provided patterns.
    * @param {...*} patterns - The patterns to match.
@@ -134,12 +161,10 @@ const MatchBase = {
   OneOf: function(...patterns) {
     return new OneOf(patterns);
   },
-
   /**
    * Matches any value.
    */
   Any: ['__any__'],
-
   /**
    * Matches a value that satisfies the given condition.
    * @param {Function} condition - The condition function.
@@ -148,7 +173,6 @@ const MatchBase = {
   Where: function(condition) {
     return new Where(condition);
   },
-
   /**
    * Matches an object that includes the given pattern.
    * @param {Object} pattern - The pattern to match.
@@ -157,7 +181,6 @@ const MatchBase = {
   ObjectIncluding: function(pattern) {
     return new ObjectIncluding(pattern);
   },
-
   /**
    * Matches an object whose values match the given pattern.
    * @param {*} pattern - The pattern to match.
@@ -166,12 +189,10 @@ const MatchBase = {
   ObjectWithValues: function(pattern) {
     return new ObjectWithValues(pattern);
   },
-
   /**
    * Matches any signed 32-bit integer.
    */
   Integer: ['__integer__'],
-
   /**
    * Custom error type for match errors.
    */
@@ -189,28 +210,6 @@ const MatchBase = {
       this.sanitizedError = new Meteor.Error(400, 'Match failed');
     }
   },
-    // Runs `f.apply(context, args)`. If check() is not called on every element of
-    // `args` (either directly or in the first level of an array), throws an error
-    // (using `description` in the message).
-  _failIfArgumentsAreNotAllChecked(f, context, args, description) {
-    const argChecker = new ArgumentChecker(args, description);
-    const result = currentArgumentChecker.withValue(
-      argChecker,
-      () => f.apply(context, args)
-    );
-
-    // If f didn't itself throw, make sure it checked all of its arguments.
-    argChecker.throwUnlessAllArgumentsHaveBeenChecked();
-    return result;
-  }
-}
-
-/**
- * @namespace Match
- * @summary The namespace for all Synchronous Match types and methods.
- */
-export const Match = {
-    ...MatchBase,
   /**
    * Tests to see if value matches pattern. Unlike check, it merely returns true
    * or false (unless an error other than Match.Error was thrown). It does not
@@ -224,31 +223,48 @@ export const Match = {
    */
   test(value, pattern) {
     return !testSubtree(value, pattern);
-  }
-};
-
-/**
- * @namespace MatchAsync
- * @summary The namespace for all Match types and methods.
- */
-export const MatchAsync = {
-    ...MatchBase,
+  },
   /**
-   * Asynchronously tests to see if value matches pattern.
-   * Unlike check, it merely returns a promise that resolves to true
-   * or false (unless an error other than Match.Error was thrown).
-   *
-   * @summary Returns a promise that resolves to true if the value matches the pattern.
+   * Asynchronously tests to see if value matches pattern. Unlike checkAsync, it merely returns true
+   * or false (unless an error other than Match.Error was thrown). It does not
+   * interact with _failIfArgumentsAreNotAllChecked.
+   * 
+   * @summary Returns true if the value matches the pattern.
    * @locus Anywhere
    * @async
    * @param {*} value The value to check
    * @param {*} pattern The pattern to match `value` against
-   * @returns {Promise<boolean>} Promise that resolves to true if the value matches the pattern, false otherwise.
+   * @returns {Promise<boolean>} A promise that resolves to true if the value matches the pattern, false otherwise.
    */
-  async test(value, pattern) {
+  async testAsync(value, pattern) {
     return !(await testSubtreeAsync(value, pattern));
+  },
+  // Runs `f.apply(context, args)`. If check() is not called on every element of
+  // `args` (either directly or in the first level of an array), throws an error
+  // (using `description` in the message).
+  _failIfArgumentsAreNotAllChecked(f, context, args, description) {
+    const argChecker = new ArgumentChecker(args, description);
+    const result = fiberLocalStorage.withValue(
+      argChecker,
+      () => f.apply(context, args)
+    );
+
+    // If f didn't itself throw, make sure it checked all of its arguments.
+    argChecker.throwUnlessAllArgumentsHaveBeenChecked();
+    return result;
+  },
+  async _failIfArgumentsAreNotAllCheckedAsync(f, context, args, description) {
+    const argChecker = new ArgumentChecker(args, description);
+    const result = await fiberLocalStorage.withValue(
+      argChecker,
+      () => f.apply(context, args)
+    );
+
+    // If f didn't itself throw, make sure it checked all of its arguments.
+    argChecker.throwUnlessAllArgumentsHaveBeenChecked();
+    return result;
   }
-};
+}
 
 class Optional {
   /**
@@ -312,6 +328,17 @@ class ObjectWithValues {
     this.pattern = pattern;
   }
 }
+
+/**
+ * Alias for Optional.prototype
+ * @type {Object}
+ */
+const OptionalPrototype = Optional.prototype;
+/**
+ * Alias for Maybe.prototype
+ * @type {Object}
+ */
+const MaybePrototype = Maybe.prototype;
 
 /**
  * Converts a value to a string suitable for an error message.
@@ -625,8 +652,8 @@ async function testSubtreeAsync(value, pattern, collectErrors = false, errors = 
     }
 
     for (let i = 0, len = value.length; i < len; i++) {
-      const elementPath = _prependPath(path, i);
-      const result = await testSubtree(value[i], pattern[0], collectErrors, errors, elementPath);
+      const elementPath = _appendPath(path, i);
+      const result = await testSubtreeAsync(value[i], pattern[0], collectErrors, errors, elementPath);
       if (result) {
         if (!collectErrors) return result;
         errors.push(result);
@@ -661,7 +688,7 @@ async function testSubtreeAsync(value, pattern, collectErrors = false, errors = 
 
   if (pattern instanceof OneOf) {
     for (const choice of pattern.choices) {
-      const result = await testSubtree(value, choice);
+      const result = await testSubtreeAsync(value, choice);
       if (!result) {
         return false;
       }
@@ -703,44 +730,46 @@ async function testSubtreeAsync(value, pattern, collectErrors = false, errors = 
     return { message: 'Expected plain object', path };
   }
 
-  const requiredPatterns = Object.create(null);
-  const optionalPatterns = Object.create(null);
-
-  const patternKeys = Object.keys(pattern);
-  for (const key of patternKeys) {
-    const subPattern = pattern[key];
-    if (subPattern instanceof Optional || subPattern instanceof Maybe) {
-      optionalPatterns[key] = subPattern.pattern;
-    } else {
-      requiredPatterns[key] = subPattern;
+  const [requiredPatterns, optionalPatterns] = [Object.create(null), Object.create(null)];
+  for (let key in pattern) {
+    if (hasOwn.call(pattern, key)) {
+      const subPattern = pattern[key];
+      const subPatternProto = Object.getPrototypeOf(subPattern);
+      if (subPatternProto === OptionalPrototype || subPatternProto === MaybePrototype) {
+        optionalPatterns[key] = subPattern.pattern;
+      } else {
+        requiredPatterns[key] = subPattern;
+      }
     }
   }
 
   const valueKeys = Object.keys(value);
-  for (const key of valueKeys) {
-    const subValue = value[key];
-    const keyPath = _prependPath(path, key);
-    if (hasOwn.call(requiredPatterns, key)) {
-      const result = await testSubtree(subValue, requiredPatterns[key], collectErrors, errors, keyPath);
-      if (result) {
-        if (!collectErrors) return result;
-        errors.push(result);
-      }
-      delete requiredPatterns[key];
-    } else if (hasOwn.call(optionalPatterns, key)) {
-      const result = await testSubtree(subValue, optionalPatterns[key], collectErrors, errors, keyPath);
-      if (result) {
-        if (!collectErrors) return result;
-        errors.push(result);
-      }
-    } else {
+    for (let i = 0, len = valueKeys.length; i < len; i++) {
+      const key = valueKeys[i];
+      const subValue = value[key];
+      const objPath = _appendPath(path, key);
+
+      if (hasOwn.call(requiredPatterns, key)) {
+        const result = await testSubtreeAsync(subValue, requiredPatterns[key], collectErrors, errors, objPath);
+        if (result) {
+          if (!collectErrors) return result;
+          errors.push(result);
+        }
+        delete requiredPatterns[key];
+      } else if (hasOwn.call(optionalPatterns, key)) {
+        const result = await testSubtreeAsync(subValue, optionalPatterns[key], collectErrors, errors, objPath);
+        if (result) {
+          if (!collectErrors) return result;
+          errors.push(result);
+        }
+      } else {
       if (!unknownKeysAllowed) {
-        const result = { message: 'Unknown key', path: keyPath };
+        const result = { message: 'Unknown key', path: objPath };
         if (!collectErrors) return result;
         errors.push(result);
       }
       if (unknownKeyPattern) {
-        const result = await testSubtree(subValue, unknownKeyPattern[0], collectErrors, errors, keyPath);
+        const result = await testSubtreeAsync(subValue, unknownKeyPattern[0], collectErrors, errors, objPath);
         if (result) {
           if (!collectErrors) return result;
           errors.push(result);
@@ -749,20 +778,31 @@ async function testSubtreeAsync(value, pattern, collectErrors = false, errors = 
     }
   }
 
-  const missingKeys = Object.keys(requiredPatterns);
-  if (missingKeys.length) {
-    const createMissingError = key => ({ message: `Missing key '${key}'`, path: _prependPath(path, key) });
-    if (!collectErrors) {
-      return createMissingError(missingKeys[0]);
-    }
-    for (const key of missingKeys) {
-      errors.push(createMissingError(key));
+    for (let key in requiredPatterns) {
+    if (hasOwn.call(requiredPatterns, key)) {
+      if (!collectErrors) {
+        return { message: `Missing key '${key}'`, path: collectErrors ? path : '' };
+      } else {
+        errors.push({ message: `Missing key '${key}'`, path: path });
+      }
     }
   }
 
+  if (!collectErrors && errors.length > 0) {
+    return errors[0];
+  }
+
+  // If we're collecting errors, return the array of errors if there are any
   if (!collectErrors) return false;
-  return errors.length === 0 ? false : errors;
+
+  // If there are no errors, return false
+  if(errors.length === 0){
+    return false
+  } else { 
+    return errors 
+  };
 }
+
 
 /**
  * Class for checking that all arguments are matched.
@@ -854,6 +894,26 @@ const _prependPath = (key, base) => {
   }
 
   return key + base;
+};
+
+const _appendPath = (base, key) => {
+  let keyPart;
+  if (typeof key === 'number' || numberRegex.test(key)) {
+    keyPart = `[${key}]`;
+  } else if (!identifierRegex.test(key) || _jsKeywords.has(key)) {
+    keyPart = `[${JSON.stringify(key)}]`;
+  } else {
+    keyPart = `.${key}`;
+  }
+  if (base) {
+    return base + keyPart;
+  } else {
+    if (keyPart[0] === '.') {
+      return keyPart.slice(1);
+    } else {
+      return keyPart;
+    }
+  }
 };
 
 const isArguments = value => Object.prototype.toString.call(value) === '[object Arguments]';
