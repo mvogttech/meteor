@@ -67,6 +67,11 @@ const format = result => new Match.Error(result.message, result.path);
  * @param {*} pattern The pattern to match `value` against
  * @param {Object} [options={}] Additional options for check
  * @param {Boolean} [options.throwAllErrors=false] If true, throw all errors
+ * @example
+ * check(42, Match.Integer);
+ * check([1, 2, 3], [Number]);
+ * check([1, 2, 3], [Match.Integer]);
+ * check({ x: 10, y: 20 }, { x: Match.Integer, y: Match.Integer });
  */
 export function check(value, pattern, options = { throwAllErrors: false }) {
   // Record that check got called, if somebody cared.
@@ -107,6 +112,11 @@ export function check(value, pattern, options = { throwAllErrors: false }) {
  * @param {Object} [options={}] Additional options for check
  * @param {Boolean} [options.throwAllErrors=false] If true, throw all errors
  * @returns {Promise<void>} A promise that resolves if the value matches the pattern, or rejects with a Match.Error.
+ * @example
+ * await checkAsync(42, Match.Integer);
+ * await checkAsync([1, 2, 3], [Number]);
+ * await checkAsync([1, 2, 3], [Match.Integer]);
+ * await checkAsync({ x: 10, y: 20 }, { x: Match.Integer, y: Match.Integer });
  */
 export async function checkAsync(value, pattern, options = { throwAllErrors: false }) {
   // Record that check got called, if somebody cared.
