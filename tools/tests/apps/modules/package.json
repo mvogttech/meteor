@@ -10,7 +10,7 @@
     "@polymer/lit-element": "0.7.1",
     "@wry/context": "^0.4.0",
     "acorn": "file:imports/links/acorn",
-    "aws-sdk": "^2.2.41",
+    "aws-sdk": "^2.1693.0",
     "cli-color": "^0.2.3",
     "github": "^0.2.4",
     "graphql": "^14.3.1",
