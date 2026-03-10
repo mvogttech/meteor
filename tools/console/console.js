@@ -80,7 +80,6 @@ const FORCE_PRETTY = process.env.METEOR_PRETTY_OUTPUT &&
 const STATUS_MAX_LENGTH = 40;
 
 const PROGRESS_MAX_WIDTH = 40;
-const PROGRESS_BAR_FORMAT = '[:bar] :percent :etas';
 const TEMP_STATUS_LENGTH = STATUS_MAX_LENGTH + 12;
 
 const STATUS_INTERVAL_MS = 50;
@@ -160,11 +159,8 @@ class ProgressDisplayStatus {
   }
 
   depaint() {
-    // For the non-progress-bar status mode, we may need to
-    // clear some characters that we printed with a trailing `\r`.
     if (this._wroteStatusMessage) {
-      var spaces = spacesString(TEMP_STATUS_LENGTH + 1);
-      this._stream.write(spaces + CARRIAGE_RETURN);
+      this._stream.write('\x1b[2K' + CARRIAGE_RETURN);
       this._wroteStatusMessage = false;
     }
   }
@@ -189,58 +185,40 @@ class ProgressDisplayStatus {
     }
 
     if (text) {
-      // the number of characters besides `text` here must
-      // be accounted for in TEMP_STATUS_LENGTH.
-      this._stream.write('  (  ' + text + '  ... )' + CARRIAGE_RETURN);
+      this._stream.write('  \u2604 ' + text + ' ...\x1b[K' + CARRIAGE_RETURN);
       this._wroteStatusMessage = true;
     }
   }
 }
 
+// Meteor brand red from logo gradient (#DE4F4F approximated via ANSI)
+const METEOR_RED = chalk.redBright;
+const METEOR_HEAD = chalk.yellowBright; // Hot leading edge of the comet
+
 class SpinnerRenderer {
   constructor() {
-    this.frames = ['-', '\\', '|', '/'];
+    // Braille dot spinner — smooth 10-frame rotation in Meteor red
+    this.frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     this.start = +(new Date);
-    this.interval = 250;
-    //// I looked at some Unicode indeterminate progress indicators, such as:
-    ////
-    //// spinner = "▁▃▄▅▆▇▆▅▄▃".split('');
-    //// spinner = "▉▊▋▌▍▎▏▎▍▌▋▊▉".split('');
-    //// spinner = "▏▎▍▌▋▊▉▊▋▌▍▎▏▁▃▄▅▆▇▆▅▄▃".split('');
-    //// spinner = "▉▊▋▌▍▎▏▎▍▌▋▊▉▇▆▅▄▃▁▃▄▅▆▇".split('');
-    //// spinner = "⠉⠒⠤⣀⠤⠒".split('');
-    ////
-    //// but none of them really seemed like an improvement. I think
-    //// the case for using unicode would be stronger in a determinate
-    //// progress indicator.
-    ////
-    //// There are also some four-frame options such as ◐◓◑◒ at
-    ////   http://stackoverflow.com/a/2685827/157965
-    //// but all of the ones I tried look terrible in the terminal.
+    this.interval = 80;
   }
 
   asString() {
     var now = +(new Date);
-
     var t = now - this.start;
     var frame = Math.floor(t / this.interval) % this.frames.length;
-    return this.frames[frame];
+    return METEOR_RED(this.frames[frame]);
   }
 }
 
-// Renders a progressbar.  Based on the npm 'progress' module, but tailored to our needs (i.e. renders to string)
+// Comet-trail progress bar: red tail ━━━ → yellow/white hot leading edge
 class ProgressBarRenderer {
-  constructor(format, options) {
+  constructor(options) {
     options = options || Object.create(null);
 
-    this.fmt = format;
     this.curr = 0;
     this.total = 100;
     this.maxWidth = options.maxWidth || this.total;
-    this.chars = {
-      complete   : '=',
-      incomplete : ' '
-    };
   }
 
   asString(availableSpace) {
@@ -248,30 +226,37 @@ class ProgressBarRenderer {
     ratio = Math.min(Math.max(ratio, 0), 1);
 
     var percent = ratio * 100;
-    var incomplete, complete, completeLength;
     var elapsed = new Date - this.start;
     var eta = (percent == 100) ? 0 : elapsed * (this.total / this.curr - 1);
 
-    /* populate the bar template with percentages and timestamps */
-    var str = this.fmt
-      .replace(':current', this.curr)
-      .replace(':total', this.total)
-      .replace(':elapsed', isNaN(elapsed) ? '0.0' : (elapsed / 1000).toFixed(1))
-      .replace(':eta', (isNaN(eta) || ! isFinite(eta)) ? '0.0' : (eta / 1000).toFixed(1))
-      .replace(':percent', percent.toFixed(0) + '%');
+    // Build the suffix: " 67% 2.1s"
+    var percentStr = percent.toFixed(0) + '%';
+    var etaStr = (isNaN(eta) || !isFinite(eta)) ? '' : (eta / 1000).toFixed(1) + 's';
+    var suffix = ' ' + percentStr + (etaStr ? ' ' + etaStr : '');
 
-    /* compute the available space (non-zero) for the bar */
-    var width = Math.min(this.maxWidth, availableSpace - str.replace(':bar', '').length);
+    // Compute bar width
+    var barWidth = Math.min(this.maxWidth, availableSpace - suffix.length);
+    if (barWidth < 4) barWidth = 4;
 
-    /* NOTE: the following assumes the user has one ':bar' token */
-    completeLength = Math.round(width * ratio);
-    complete = Array(completeLength + 1).join(this.chars.complete);
-    incomplete = Array(width - completeLength + 1).join(this.chars.incomplete);
+    var completeLength = Math.round(barWidth * ratio);
+    var incompleteLength = barWidth - completeLength;
 
-    /* fill in the actual progress bar */
-    str = str.replace(':bar', complete + incomplete);
+    // Comet trail effect: red tail with bright yellow leading edge
+    var tail, head;
+    if (completeLength <= 0) {
+      tail = '';
+      head = '';
+    } else if (completeLength <= 2) {
+      tail = '';
+      head = '━'.repeat(completeLength);
+    } else {
+      // Last 2 chars are the hot "meteor head", rest is the cooling red tail
+      tail = '━'.repeat(completeLength - 2);
+      head = '━━';
+    }
+    var incomplete = '─'.repeat(incompleteLength);
 
-    return str;
+    return METEOR_RED(tail) + METEOR_HEAD(head) + chalk.dim(incomplete) + chalk.dim(suffix);
   }
 }
 
@@ -284,12 +269,10 @@ class ProgressDisplayFull {
     this._status = '';
 
     var options = {
-      complete: '=',
-      incomplete: ' ',
       maxWidth: PROGRESS_MAX_WIDTH,
       total: 100
     };
-    this._progressBarRenderer = new ProgressBarRenderer(PROGRESS_BAR_FORMAT, options);
+    this._progressBarRenderer = new ProgressBarRenderer(options);
     this._progressBarRenderer.start = new Date();
 
     this._headless = !! (
@@ -310,7 +293,10 @@ class ProgressDisplayFull {
 
   depaint() {
     this._clearDelayedRender();
-    this._stream.write(spacesString(this._printedLength) + CARRIAGE_RETURN);
+    // Use ANSI erase-line instead of space-counting, which breaks with
+    // Unicode characters that have ambiguous display widths (emoji, braille,
+    // box-drawing). We're guaranteed to be on a TTY in ProgressDisplayFull.
+    this._stream.write('\x1b[2K' + CARRIAGE_RETURN);
   }
 
   updateStatus(status) {
@@ -331,6 +317,14 @@ class ProgressDisplayFull {
       this._progressBarRenderer.start = startTime;
     }
 
+    // Spinner mode (indeterminate): render on every poll for smooth animation.
+    // The spinner is just a few characters — no need to throttle.
+    if (fraction === undefined) {
+      this._render();
+      return;
+    }
+
+    // Progress bar mode: throttle to avoid excessive redraws
     if (!this._rerenderTimeout && this._lastWrittenTime) {
       this._rerenderTimeout = setTimeout(() => {
         this._rerenderTimeout = null;
@@ -361,12 +355,11 @@ class ProgressDisplayFull {
       this._clearDelayedRender();
     }
 
-    // XXX: Or maybe just jump to the correct position?
     var progressGraphic = '';
 
-    // The cursor appears in position 0; we indent it a little to avoid this
-    // This also means it appears less important, which is good
-    var indentColumns = 3;
+    // Layout: "  ☄ status text  ━━━━━━━━──── 67% 2.1s"
+    var prefixStr = '  ' + METEOR_RED('☄') + ' ';
+    var prefixLen = 4; // "  ☄ " = 4 visible chars
 
     var streamColumns = this._console.width();
     var statusColumns;
@@ -375,29 +368,29 @@ class ProgressDisplayFull {
       statusColumns = STATUS_MAX_LENGTH;
       progressColumns = 0;
     } else {
-      statusColumns = Math.min(STATUS_MAX_LENGTH, streamColumns - indentColumns);
-      progressColumns = Math.min(PROGRESS_MAX_WIDTH, streamColumns - indentColumns - statusColumns);
+      statusColumns = Math.min(STATUS_MAX_LENGTH, streamColumns - prefixLen);
+      progressColumns = Math.min(PROGRESS_MAX_WIDTH, streamColumns - prefixLen - statusColumns);
     }
 
+    var progressVisibleLen = 0;
+
     if (this._fraction !== undefined && progressColumns > 16) {
-      // 16 is a heuristic number that allows enough space for a meaningful progress bar
       progressGraphic = "  " + this._progressBarRenderer.asString(progressColumns - 2);
+      progressVisibleLen = progressColumns;
 
     } else if (! this._headless && progressColumns > 3) {
-      // 3 = 2 spaces + 1 spinner character
       progressGraphic = "  " + this._spinnerRenderer.asString();
+      progressVisibleLen = 3; // 2 spaces + 1 spinner char
 
     } else if (new Date - this._lastWrittenTime > 5 * 60 * 1000) {
-      // Print something every five minutes, to avoid test timeouts.
-      progressGraphic = "  [ProgressDisplayFull keepalive]";
-      this._lastWrittenLine = null; // Force printing.
+      progressGraphic = "  [keepalive]";
+      progressVisibleLen = progressGraphic.length;
+      this._lastWrittenLine = null;
     }
 
     if (this._status || progressGraphic) {
-      // XXX: Just update the graphic, to avoid text flicker?
-
-      var line = spacesString(indentColumns);
-      var length = indentColumns;
+      var line = prefixStr;
+      var length = prefixLen;
 
       if (this._status) {
         var fixedLength = toFixedLength(this._status, statusColumns);
@@ -408,12 +401,14 @@ class ProgressDisplayFull {
         length += statusColumns;
       }
 
-      line += progressGraphic + CARRIAGE_RETURN;
-      length += progressGraphic.length;
+      // \x1b[K erases from cursor to end of line, preventing residual
+      // characters when external processes (rspack, webpack) write shorter
+      // lines to the same stdout.
+      line += progressGraphic + '\x1b[K' + CARRIAGE_RETURN;
+      length += progressVisibleLen;
 
       if (this._headless &&
           line === this._lastWrittenLine) {
-        // Don't write the exact same line twice in a row.
         return;
       }
 
@@ -903,7 +898,7 @@ class Console extends ConsoleBase {
           style = chalk.bold.red;
           break;
         case LEVEL_CODE_WARN:
-          style = chalk.red;
+          style = chalk.yellow;
           break;
       }
     }
@@ -923,17 +918,11 @@ class Console extends ConsoleBase {
   // A wrapper around Console.info. Prints the message out in green (if pretty),
   // with the CHECKMARK as the bullet point in front of it.
   success(message, uglySuccessKeyword = "success") {
-    var checkmark;
-
     if (! this._pretty) {
       return this.info(`${message}: ${uglySuccessKeyword}`);
     }
 
-    if (process.platform === "win32") {
-      checkmark = chalk.green('SUCCESS');
-    } else {
-      checkmark = chalk.green('\u2713'); // CHECKMARK
-    }
+    var checkmark = chalk.green('\u2713'); // ✓ CHECKMARK
 
     return this.info(
         chalk.green(message),
@@ -958,7 +947,7 @@ class Console extends ConsoleBase {
       return this[printFn](message);
     }
 
-    var xmark = chalk.red('\u2717');
+    var xmark = chalk.red('\u2717'); // ✗ BALLOT X
     return this[printFn](
         chalk.red(message),
         this.options({ bulletPoint: xmark + " " }));
@@ -966,10 +955,11 @@ class Console extends ConsoleBase {
 
   // Wrapper around Console.warn that prints a large "WARNING" label in front.
   labelWarn(message) {
-    return this.warn(message, this.options({ bulletPoint: "WARNING: " }));
+    var label = this._pretty ? chalk.yellow.bold("WARNING") + " " : "WARNING: ";
+    return this.warn(message, this.options({ bulletPoint: label }));
   }
 
-  // Wrappers around Console functions to prints an "=> " in front. Optional
+  // Wrappers around Console functions to prints an "▸ " in front. Optional
   // indent to indent the arrow.
   arrowError(message, indent) {
     return this._arrowPrint("error", message, indent);

@@ -8,6 +8,7 @@ var compiler = require('./compiler.js');
 var Profile = require('../tool-env/profile').Profile;
 
 import SourceArch from './source-arch.js';
+import { Console } from '../console/console.js';
 import { PackageNamespace } from "./package-namespace.js";
 import { PackageNpm } from "./package-npm.js";
 import { PackageCordova } from "./package-cordova.js";
@@ -1355,6 +1356,8 @@ Object.assign(PackageSource.prototype, {
     }
 
     function find(dir, depth, { inNodeModules = false, cache = false } = {}) {
+      Console.nudge();
+
       // Remove trailing slash.
       dir = dir.replace(/\/$/, "");
 

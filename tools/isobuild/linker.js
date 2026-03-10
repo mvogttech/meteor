@@ -9,6 +9,7 @@ import { sourceMapLength } from '../utils/utils.js';
 import files from '../fs/files';
 import { findAssignedGlobals } from './js-analyze.js';
 import { convert as convertColons } from '../utils/colon-converter.js';
+import { Console } from '../console/console.js';
 
 // A rather small cache size, assuming only one module is being linked
 // most of the time.
@@ -103,6 +104,7 @@ Object.assign(Module.prototype, {
     // Find all global references in any files
     var assignedVariables = [];
     for (const file of self.files) {
+      Console.nudge();
       assignedVariables = assignedVariables.concat(
           await file.computeAssignedVariables());
     }
@@ -277,6 +279,7 @@ Object.assign(Module.prototype, {
     }
 
     for (const file of this.files) {
+      Console.nudge();
       if (file.bare) {
         // Bare files will be added after the module tree
         continue;

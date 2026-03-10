@@ -51,6 +51,7 @@ const { parse: reifyBabelParse } = require("@meteorjs/reify/lib/parsers/babel");
 
 import Resolver, { Resolution } from "./resolver";
 import LRUCache from 'lru-cache';
+import { Console } from "../console/console.js";
 
 const fakeFileStat = {
   isFile() {
@@ -505,6 +506,7 @@ export default class ImportScanner {
 
   async addInputFiles(files: File[]) {
     for (const file of files) {
+      Console.nudge();
       await this.checkSourceAndTargetPaths(file);
 
       // Note: this absolute path may not necessarily exist on the file
@@ -765,6 +767,7 @@ export default class ImportScanner {
 
   async scanImports() {
     for (const file of this.outputFiles) {
+      Console.nudge();
       if (!file.lazy) {
         await this.scanFile(file);
       }
@@ -786,6 +789,7 @@ export default class ImportScanner {
       this.allMissingModules = newlyMissing;
 
       for (const id of Object.keys(missingModules)) {
+        Console.nudge();
         let staticImportInfo: ImportInfo | null = null;
         let dynamicImportInfo: ImportInfo | null = null;
 
