@@ -99,6 +99,7 @@ export function normalizeOptions(options) {
     transform: null,
     _driver: undefined,
     _preventAutopublish: false,
+    persist: false,
     ...cleanedOptions,
   };
 }

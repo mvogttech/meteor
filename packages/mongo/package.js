@@ -46,6 +46,8 @@ Package.onUse(function (api) {
     "logging",
   ]);
 
+  api.use("reactive-var", "client");
+
   // Make weak use of Decimal type on client
   api.use("mongo-decimal", "client", { weak: true });
   api.use("mongo-decimal", "server");
@@ -103,6 +105,8 @@ Package.onUse(function (api) {
   api.addFiles("remote_collection_driver.ts", "server");
   api.addFiles("collection/collection_extensions.js", ["client", "server"]);
   api.addFiles("collection/collection.js", ["client", "server"]);
+  api.addFiles("collection/persist_idb.js", "client");
+  api.addFiles("collection/persist_extension.js", "client");
   api.addFiles("connection_options.ts", "server");
   // For zodern:types to pick up our published types.
   // Both the .d.ts file and package-types.json must be published
@@ -136,4 +140,5 @@ Package.onTest(function (api) {
   api.addFiles("tests/oplog_tests.js", "server");
   api.addFiles("tests/oplog_v2_converter_tests.js", "server");
   api.addFiles("tests/doc_fetcher_tests.js", "server");
+  api.addFiles("tests/persist_tests.js", "client");
 });
