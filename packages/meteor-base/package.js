@@ -19,7 +19,9 @@ Package.onUse(function(api) {
     'webapp',
 
     // The protocol and client/server libraries that Meteor uses to send data
-    'ddp',
+    'ddp-core',
+    'ddp-bridge',
+    'ddp-ws',
 
     // This package uses the user agent of each incoming HTTP request to
     // decide whether to inject <script> tags into the <head> of the
