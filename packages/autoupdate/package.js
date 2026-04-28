@@ -10,7 +10,10 @@ Package.onUse(function(api) {
 
   api.use('reload', 'client', { weak: true });
 
-  api.use(['ecmascript', 'ddp'], ['client', 'server']);
+  // Use the new DDP engine on the server so publications register with ddp-bridge
+  api.use(['ecmascript'], ['client', 'server']);
+  api.use('ddp', 'client');
+  api.use('ddp-bridge', 'server');
 
   api.mainModule('autoupdate_server.js', 'server');
   api.mainModule('autoupdate_client.js', 'client');
